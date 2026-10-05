@@ -242,6 +242,7 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
             "sampcmd.exe",
             "modsync_hook.asi",
             "ModSyncLauncher.exe",
+            "launcher_config.json",
         ];
 
         for filename in &core_files {
@@ -315,24 +316,33 @@ pub fn sync_modsync_session<P: AsRef<Path>>(
         return Err(format!("ModSyncLauncher executable not found at {:?}", launcher_exe));
     }
 
+    let host = if server_ip.is_empty() || server_ip == "localhost" {
+        "127.0.0.1"
+    } else {
+        server_ip
+    };
+
+    let effective_cdn = match cdn_url {
+        Some(url) if !url.trim().is_empty() => url.trim().to_string(),
+        _ => format!("http://{}:8080", host),
+    };
+
     let mut cmd = std::process::Command::new(&launcher_exe);
     cmd.arg("--gta-path")
         .arg(base_dir)
         .arg("--server-id")
         .arg(server_id)
         .arg("--host")
-        .arg(server_ip)
+        .arg(host)
         .arg("--port")
         .arg(server_port.to_string())
         .arg("--player-name")
         .arg(player_name)
+        .arg("--server")
+        .arg(&effective_cdn)
+        .arg("--cdn-url")
+        .arg(&effective_cdn)
         .arg("--sync-only");
-
-    if let Some(cdn) = cdn_url {
-        if !cdn.is_empty() {
-            cmd.arg("--cdn-url").arg(cdn);
-        }
-    }
 
     cmd.current_dir(base_dir);
 

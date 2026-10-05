@@ -234,17 +234,22 @@ export const startGame = async (
 
   // Pre-sync server session (modloader profile, CLEO staging, CDN assets)
   try {
+    const hostIp = await getIpAddress(server.ip);
     const serverId = (server.hostname || `${server.ip}_${server.port}`)
       .replace(/[^a-zA-Z0-9_-]/g, "_")
       .toLowerCase();
-    const cdnUrl = server.rules?.cdn_url || "";
+    const cdnUrl =
+      server.rules?.cdn_url ||
+      server.rules?.artwork_cdn ||
+      `http://${hostIp}:8080`;
+
     await invoke("sync_modsync_session", {
       gtasaPath,
-      serverIp: await getIpAddress(server.ip),
+      serverIp: hostIp,
       serverPort: server.port,
       playerName: nickname,
       serverId,
-      cdnUrl: cdnUrl.length ? cdnUrl : null,
+      cdnUrl,
     });
   } catch (e) {
     Log.warn("ModSync session synchronization status:", e);
