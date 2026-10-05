@@ -230,7 +230,6 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
             "vorbisHooked.dll",
             "vorbis.dll",
             "ogg.dll",
-            "dinput8.dll",
             "CLEO.asi",
             "cleo_redux.asi",
             ".cleo_config.ini",
@@ -249,6 +248,13 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
             let src = src_dir.join(filename);
             let dst = base_dir.join(filename);
             copy_file_if_needed(&src, &dst);
+        }
+
+        // Remove duplicate ASI loader dinput8.dll if present alongside vorbisFile.dll to prevent double-hook crashes
+        let dinput8_path = base_dir.join("dinput8.dll");
+        if dinput8_path.exists() {
+            let _ = fs::remove_file(&dinput8_path);
+            info!("Removed duplicate ASI loader dinput8.dll from {:?}", dinput8_path);
         }
 
         // Directories: cleo and modloader/.data
