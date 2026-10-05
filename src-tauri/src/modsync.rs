@@ -242,6 +242,8 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
             "modsync_hook.asi",
             "ModSyncLauncher.exe",
             "launcher_config.json",
+            "loadscreen.png",
+            "loadscreen.jpg",
         ];
 
         for filename in &core_files {
