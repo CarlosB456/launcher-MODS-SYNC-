@@ -273,6 +273,29 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
         let _ = fs::create_dir_all(base_dir.join("modloader").join("servers"));
         let _ = fs::create_dir_all(base_dir.join("cleo").join("servers"));
 
+        // Ensure modloader/.data/config.ini has EnableMenu = false to prevent ControllerBlockManager collision
+        let config_ini = base_dir.join("modloader").join(".data").join("config.ini");
+        if config_ini.exists() {
+            if let Ok(content) = fs::read_to_string(&config_ini) {
+                if content.contains("EnableMenu = true") || content.contains("EnableMenu        = true") {
+                    let patched = content.replace("EnableMenu        = true", "EnableMenu        = false")
+                                         .replace("EnableMenu = true", "EnableMenu = false");
+                    let _ = fs::write(&config_ini, patched);
+                }
+            }
+        }
+
+        // Patch modloader.asi at 0x9D00 to suppress ControllerBlockManager error box
+        let ml_asi = base_dir.join("modloader.asi");
+        if ml_asi.exists() {
+            if let Ok(mut bytes) = fs::read(&ml_asi) {
+                if bytes.len() > 0x9D05 && bytes[0x9D00] == 0x6A && bytes[0x9D01] == 0x10 {
+                    bytes[0x9D00] = 0xC3;
+                    let _ = fs::write(&ml_asi, &bytes);
+                }
+            }
+        }
+
         // Deploy 0.4.0 - R1 client DLL to %LOCALAPPDATA%\mp.open.launcher\samp\0.4.0-R1\samp.dll
         if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
             let target_040_dir = PathBuf::from(local_app_data)
