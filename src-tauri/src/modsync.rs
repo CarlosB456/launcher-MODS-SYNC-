@@ -118,22 +118,28 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
 
     // 3. Ensure modsync_hook.asi is deployed
     let hook_dest = base_dir.join("modsync_hook.asi");
-    if !hook_dest.exists() {
-        let possible_sources = [
-            PathBuf::from("extra/modsync/modsync_hook.asi"),
-            PathBuf::from("src-tauri/extra/modsync/modsync_hook.asi"),
-            PathBuf::from("../extra/modsync/modsync_hook.asi"),
-        ];
+    let possible_sources = [
+        PathBuf::from("extra/modsync/modsync_hook.asi"),
+        PathBuf::from("src-tauri/extra/modsync/modsync_hook.asi"),
+        PathBuf::from("../extra/modsync/modsync_hook.asi"),
+    ];
 
-        for src in &possible_sources {
-            if src.exists() {
+    for src in &possible_sources {
+        if src.exists() {
+            let should_copy = match (fs::metadata(src), fs::metadata(&hook_dest)) {
+                (Ok(s), Ok(d)) => s.len() != d.len(),
+                (Ok(_), Err(_)) => true,
+                _ => false,
+            };
+
+            if should_copy {
                 if let Err(e) = fs::copy(src, &hook_dest) {
                     warn!("Failed to copy modsync_hook.asi from {:?}: {}", src, e);
                 } else {
-                    info!("Deployed modsync_hook.asi to {:?}", hook_dest);
-                    break;
+                    info!("Synchronized modsync_hook.asi to {:?}", hook_dest);
                 }
             }
+            break;
         }
     }
 

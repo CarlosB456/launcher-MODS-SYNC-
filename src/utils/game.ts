@@ -212,10 +212,10 @@ export const startGame = async (
   const idealSAMPDllPath = await path.join(gtasaPath, "samp.dll");
   const targetVersion =
     sampVersion === "040R1_samp.dll"
-      ? "037R1_samp.dll"
+      ? "03DL_samp.dll"
       : sampVersion !== "custom"
         ? sampVersion
-        : "037R1_samp.dll";
+        : "03DL_samp.dll";
   const file = validFileChecksums.get(targetVersion as any);
   const ourSAMPDllPath =
     sampVersion === "custom"

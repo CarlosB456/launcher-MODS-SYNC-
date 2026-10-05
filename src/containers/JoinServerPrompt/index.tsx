@@ -162,16 +162,23 @@ const JoinServerPrompt = () => {
     if (await fs.exists(`${gtasaPath}/samp.dll`)) {
       setPerServerVersion("custom");
     } else if (
-      (server && server.version.includes("0.3.7")) ||
-      (server && server.rules["artwork"] == undefined)
+      server &&
+      server.rules["allowed_clients"] &&
+      (server.rules["allowed_clients"].includes("0.4.0") ||
+        server.rules["allowed_clients"].includes("0.4.0 - R1"))
     ) {
-      setPerServerVersion("037R5_samp.dll");
+      setPerServerVersion("040R1_samp.dll");
     } else if (
       server &&
       server.rules["artwork"] &&
       server.rules["artwork"] === "Yes"
     ) {
-      setPerServerVersion("03DL_samp.dll");
+      setPerServerVersion("040R1_samp.dll");
+    } else if (
+      (server && server.version.includes("0.3.7")) ||
+      (server && server.rules["artwork"] == undefined)
+    ) {
+      setPerServerVersion("037R5_samp.dll");
     } else if (
       server &&
       server.rules["allowed_clients"] &&
