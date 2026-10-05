@@ -131,6 +131,12 @@ export const startGame = async (
     return;
   }
 
+  try {
+    await invoke("ensure_modsync", { gtasaPath });
+  } catch (e) {
+    Log.warn("ModSync framework optimization status:", e);
+  }
+
   let foundSampInGtaFolder = true;
   const dirValidity = await checkDirectoryValidity(gtasaPath, (reason) => {
     if (reason === "samp") foundSampInGtaFolder = false;
@@ -249,6 +255,11 @@ export const startGame = async (
     const custom040Path = await getLocalPath("samp", "0.4.0-R1", "samp.dll");
     if (await fs.exists(custom040Path)) {
       ourSAMPDllPath = custom040Path;
+      try {
+        await fs.copyFile(custom040Path, idealSAMPDllPath);
+      } catch (err) {
+        Log.debug("Failed copying 040R1 samp.dll to game dir:", err);
+      }
     } else if (await fs.exists(idealSAMPDllPath)) {
       ourSAMPDllPath = idealSAMPDllPath;
     } else {

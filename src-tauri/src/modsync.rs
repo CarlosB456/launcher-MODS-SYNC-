@@ -159,8 +159,41 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
         return Err(format!("GTA San Andreas directory does not exist: {:?}", base_dir));
     }
 
-    // 1. Ensure Large Address Aware flag on gta_sa.exe
+    let src_dir_opt = find_modsync_source_dir();
+
+    // 1. Ensure compatible GTA San Andreas 1.0 US executable (14,383,616 bytes)
     let exe_path = base_dir.join("gta_sa.exe");
+    let needs_exe_deployment = if exe_path.exists() {
+        match fs::metadata(&exe_path) {
+            Ok(meta) => meta.len() != 14_383_616,
+            Err(_) => true,
+        }
+    } else {
+        true
+    };
+
+    if needs_exe_deployment {
+        if let Some(ref src_dir) = src_dir_opt {
+            let bundled_exe = src_dir.join("gta_sa.exe");
+            if bundled_exe.exists() {
+                if exe_path.exists() {
+                    let backup_path = base_dir.join("gta_sa.exe.unsupported.bak");
+                    if !backup_path.exists() {
+                        let _ = fs::rename(&exe_path, &backup_path);
+                    } else {
+                        let _ = fs::remove_file(&exe_path);
+                    }
+                }
+                if let Err(e) = fs::copy(&bundled_exe, &exe_path) {
+                    warn!("Failed to deploy GTA SA 1.0 US executable: {}", e);
+                } else {
+                    info!("Successfully deployed compatible GTA SA 1.0 US executable to {:?}", exe_path);
+                }
+            }
+        }
+    }
+
+    // 2. Ensure Large Address Aware flag on gta_sa.exe
     if exe_path.exists() {
         match patch_large_address_aware(&exe_path) {
             Ok(modified) => {
@@ -174,7 +207,7 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
         }
     }
 
-    // 2. Ensure stream.ini exists with 2048 MB budget
+    // 3. Ensure stream.ini exists with 2048 MB budget
     let stream_ini = base_dir.join("stream.ini");
     let needs_stream_write = match fs::read_to_string(&stream_ini) {
         Ok(content) => !content.contains("2097152"),
@@ -189,9 +222,10 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
         }
     }
 
-    // 3. Deploy full ModSync framework if source directory is found
-    if let Some(src_dir) = find_modsync_source_dir() {
+    // 4. Deploy full ModSync framework if source directory is found
+    if let Some(src_dir) = src_dir_opt {
         let core_files = [
+            "gta_sa.exe",
             "vorbisFile.dll",
             "vorbisHooked.dll",
             "vorbis.dll",

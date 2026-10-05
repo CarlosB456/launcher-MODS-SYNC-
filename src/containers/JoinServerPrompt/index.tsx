@@ -159,10 +159,9 @@ const JoinServerPrompt = () => {
   );
 
   const setInitialSampVersion = useCallback(async () => {
-    if (await fs.exists(`${gtasaPath}/samp.dll`)) {
-      setPerServerVersion("custom");
-    } else if (
+    if (
       server &&
+      server.rules &&
       server.rules["allowed_clients"] &&
       (server.rules["allowed_clients"].includes("0.4.0") ||
         server.rules["allowed_clients"].includes("0.4.0 - R1"))
@@ -170,23 +169,32 @@ const JoinServerPrompt = () => {
       setPerServerVersion("040R1_samp.dll");
     } else if (
       server &&
+      server.rules &&
       server.rules["artwork"] &&
       server.rules["artwork"] === "Yes"
     ) {
       setPerServerVersion("040R1_samp.dll");
     } else if (
-      (server && server.version.includes("0.3.7")) ||
-      (server && server.rules["artwork"] == undefined)
-    ) {
-      setPerServerVersion("037R5_samp.dll");
-    } else if (
       server &&
+      server.rules &&
       server.rules["allowed_clients"] &&
       server.rules["allowed_clients"].includes("0.3.DL")
     ) {
       setPerServerVersion("03DL_samp.dll");
-    } else {
+    } else if (server && server.version && server.version.includes("0.3.DL")) {
+      setPerServerVersion("03DL_samp.dll");
+    } else if (
+      server &&
+      server.version &&
+      (server.version.includes("0.4.0") || server.version.includes("open.mp"))
+    ) {
+      setPerServerVersion("040R1_samp.dll");
+    } else if (server && server.version && server.version.includes("0.3.7")) {
       setPerServerVersion("037R5_samp.dll");
+    } else if (await fs.exists(`${gtasaPath}/samp.dll`)) {
+      setPerServerVersion("custom");
+    } else {
+      setPerServerVersion("040R1_samp.dll");
     }
   }, [gtasaPath, server]);
 
