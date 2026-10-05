@@ -64,7 +64,7 @@ launcher-MODS-SYNC-/
 │   │   │   ├── FileSystem/             # IMG synchronizer, LAA patcher, stream config
 │   │   │   ├── Network/                # Async CDN downloader with SHA-256 checks
 │   │   │   ├── Sync/                   # Sandbox isolation, CLEO routing, backup engine
-│   │   │   ├── UI/                     # Professional zero-emoji console UI
+│   │   │   ├── UI/                     # Professional console UI
 │   │   │   └── Security/               # Cryptographic integrity verifier
 │   │   ├── Program.cs                  # CLI entry point (--sync-only, --auto-launch, --clean)
 │   │   └── ModSyncLauncher.csproj      # .NET 8 Single-File configuration
@@ -99,7 +99,7 @@ launcher-MODS-SYNC-/
 └── README.md                           # Documentation
 ```
 
----
+--
 
 ## Build Instructions
 
