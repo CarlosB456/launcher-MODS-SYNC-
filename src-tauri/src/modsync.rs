@@ -1,7 +1,7 @@
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use log::{info, warn, error};
+use log::{info, warn};
 
 const LAA_FLAG: u16 = 0x0020;
 const STREAM_INI_CONTENT: &str = r#"; ModSync Stream Memory Configuration

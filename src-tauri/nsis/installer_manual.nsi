@@ -550,6 +550,11 @@ Section Install
 
   ; Copy resources
 
+  ; Copy ModSync assets
+  SetOutPath "$INSTDIR\extra\modsync"
+  File /r "${__FILEDIR__}\..\extra\modsync\*.*"
+  SetOutPath $INSTDIR
+
   ; Copy external binaries
 
   ; Create uninstaller
