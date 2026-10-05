@@ -157,3 +157,8 @@ pub fn log_warn(msg: &str) -> () {
 pub fn log_error(msg: &str) -> () {
     error!("Frontend error: {}", msg);
 }
+
+#[tauri::command]
+pub fn ensure_modsync(gtasa_path: &str) -> std::result::Result<(), String> {
+    crate::modsync::ensure_modsync_framework(gtasa_path)
+}

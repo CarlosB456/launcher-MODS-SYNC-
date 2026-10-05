@@ -48,6 +48,9 @@ pub async fn run_samp(
         LauncherError::Process(format!("Invalid executable path {:?}: {}", exe_path, e))
     })?;
 
+    // Automatically optimize GTA SA for ModSync: 2048 MB memory budget, door animations matrix pool, and LAA flag
+    let _ = crate::modsync::ensure_modsync_framework(executable_dir);
+
     let mut cmd = Command::new(&exe_path);
 
     let mut ready_for_exec = cmd

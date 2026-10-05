@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ModSyncLauncher.Tests/ModSyncLauncher.Tests.csproj" />
+  <Project Path="ModSyncLauncher/ModSyncLauncher.csproj" />
+</Solution>

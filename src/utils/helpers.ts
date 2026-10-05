@@ -393,6 +393,7 @@ export const getSampVersions = (): readonly SAMPDLLVersions[] => {
 };
 
 const VERSION_NAME_MAP: Record<SAMPDLLVersions, string | (() => string)> = {
+  "040R1_samp.dll": "0.4.0 - R1",
   "037R1_samp.dll": "0.3.7-R1",
   "037R2_samp.dll": "0.3.7-R2",
   "037R3_samp.dll": "0.3.7-R3",

@@ -25,6 +25,7 @@ export const SORT_TYPES = ["none", "ascending", "descending"] as const;
 export type SortType = (typeof SORT_TYPES)[number];
 
 export const SAMP_DLL_VERSIONS = [
+  "040R1_samp.dll",
   "037R1_samp.dll",
   "037R2_samp.dll",
   "037R3_samp.dll",

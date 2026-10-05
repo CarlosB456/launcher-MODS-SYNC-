@@ -14,7 +14,10 @@
     "tauri": "tauri",
     "start": "tauri dev",
     "release": "tauri build -t i686-pc-windows-msvc",
-    "installer": "cd src-tauri/nsis && makensis installer_manual.nsi"
+    "installer": "cd src-tauri/nsis && makensis installer_manual.nsi",
+    "build:client": "dotnet build client/ModSyncClient.slnx -c Release",
+    "test:client": "dotnet test client/ModSyncLauncher.Tests/ModSyncLauncher.Tests.csproj",
+    "publish:client": "dotnet publish client/ModSyncLauncher/ModSyncLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o client/distribution"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

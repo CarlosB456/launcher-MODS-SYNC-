@@ -11,6 +11,7 @@ mod ipc;
 mod query;
 mod samp;
 mod validation;
+pub mod modsync;
 
 #[path = "deeplink/lib.rs"]
 #[cfg(target_os = "windows")]
@@ -190,6 +191,7 @@ async fn run_tauri_app() -> Result<()> {
             commands::get_checksum_of_files,
             commands::extract_7z,
             commands::copy_files_to_gtasa,
+            commands::ensure_modsync,
             query::query_server,
             ipc::send_message_to_game
         ])

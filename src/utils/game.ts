@@ -220,6 +220,12 @@ export const startGame = async (
         ? await getLocalPath(file.path, file.name)
         : idealSAMPDllPath;
 
+  try {
+    await invoke("ensure_modsync", { gtasaPath });
+  } catch (e) {
+    Log.warn("ModSync framework optimization status:", e);
+  }
+
   invoke("inject", {
     name: nickname,
     ip: await getIpAddress(server.ip),

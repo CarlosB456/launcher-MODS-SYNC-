@@ -8,6 +8,7 @@ export const DEBUG_MODE = process.argv[3] && process.argv[3] == "--ompdebug";
 
 type ResourceName =
   | "samp_clients.7z"
+  | "040R1_samp.dll"
   | "037R1_samp.dll"
   | "037R2_samp.dll"
   | "037R3_samp.dll"
@@ -15,6 +16,7 @@ type ResourceName =
   | "037R4_samp.dll"
   | "037R5_samp.dll"
   | "03DL_samp.dll"
+  | "modsync_hook.asi"
   | "bass.dll"
   | "gtaweap3.ttf"
   | "mouse.png"
@@ -46,6 +48,17 @@ const fillvalidFileChecksumsMap = () => {
     path: "samp/",
     name: "samp_clients.7z",
     checksum: "5572377f1c6f9fbcb673a8cf26c19984",
+  });
+  validFileChecksums.set("040R1_samp.dll", {
+    path: "samp/0.4.0-R1/",
+    name: "samp.dll",
+    checksum: "1d22eaa2605717ddf215f68e861de378",
+  });
+  validFileChecksums.set("modsync_hook.asi", {
+    path: "extra/modsync/",
+    name: "modsync_hook.asi",
+    checksum: "",
+    requiredInGameDir: true,
   });
   validFileChecksums.set("037R1_samp.dll", {
     path: "samp/0.3.7-R1/",
