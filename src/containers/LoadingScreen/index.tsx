@@ -53,6 +53,9 @@ const LoadingScreen = ({ onEnd }: LoadingScreenProps) => {
   const [currentTask, setCurrentTask] = useState("Getting ready to launch...");
   const downloadedSize = useRef(0);
   const abortController = useRef<AbortController | null>(null);
+  const validationRetries = useRef(0);
+  const processFileChecksumsRef =
+    useRef<(isInitialLoad?: boolean) => Promise<void>>();
 
   useEffect(() => {
     i18n.changeLanguage(language);
@@ -117,40 +120,27 @@ const LoadingScreen = ({ onEnd }: LoadingScreenProps) => {
 
         abortController.current = new AbortController();
 
-        await new Promise<void>((resolve, reject) => {
-          download(
-            "https://assets.open.mp/samp_clients.7z",
-            archive,
-            async (progress, total) => {
-              if (abortController.current?.signal.aborted) {
-                reject(new Error("Download aborted"));
-                return;
-              }
-
-              updateDownloadProgress(progress, total);
-
-              if (downloadedSize.current >= total) {
-                try {
-                  setLoadingStage(LoadingStage.EXTRACTING);
-                  setCurrentTask("Extracting files...");
-
-                  await invoke("extract_7z", {
-                    path: archive,
-                    outputPath: sampPath,
-                  });
-
-                  resetDownloadState();
-                  resolve();
-                } catch (extractError) {
-                  Log.error("Extraction failed:", extractError);
-                  reject(extractError);
-                }
-              }
+        await download(
+          "https://assets.open.mp/samp_clients.7z",
+          archive,
+          (progress, total) => {
+            if (abortController.current?.signal.aborted) {
+              return;
             }
-          );
+            updateDownloadProgress(progress, total);
+          }
+        );
+
+        setLoadingStage(LoadingStage.EXTRACTING);
+        setCurrentTask("Extracting files...");
+
+        await invoke("extract_7z", {
+          path: archive,
+          outputPath: sampPath,
         });
 
-        await processFileChecksums(false);
+        resetDownloadState();
+        await processFileChecksumsRef.current?.(false);
       } catch (error) {
         Log.error("SAMP files download failed:", error);
         setCurrentTask(
@@ -171,25 +161,16 @@ const LoadingScreen = ({ onEnd }: LoadingScreenProps) => {
 
         abortController.current = new AbortController();
 
-        await new Promise<void>((resolve, reject) => {
-          download(link, ompFile, async (progress, total) => {
-            if (abortController.current?.signal.aborted) {
-              reject(new Error("Download aborted"));
-              return;
-            }
-
-            updateDownloadProgress(progress, total);
-
-            if (downloadedSize.current >= total) {
-              resetDownloadState();
-              resolve();
-            }
-          });
+        await download(link, ompFile, (progress, total) => {
+          if (abortController.current?.signal.aborted) {
+            return;
+          }
+          updateDownloadProgress(progress, total);
         });
 
-        // Small delay to ensure file is fully written
+        resetDownloadState();
         await new Promise((resolve) => setTimeout(resolve, 500));
-        await processFileChecksums(false);
+        await processFileChecksumsRef.current?.(false);
       } catch (error) {
         Log.error("OMP file download failed:", error);
         setCurrentTask(
@@ -361,13 +342,24 @@ const LoadingScreen = ({ onEnd }: LoadingScreenProps) => {
         const validationResults = await validateFileChecksums(checksums);
 
         if (validationResults.includes(false)) {
-          Log.info("File validation failed, re-downloading SAMP files");
+          if (validationRetries.current >= 3) {
+            Log.error("File validation failed after 3 attempts");
+            setCurrentTask(
+              "File validation failed. Please check your connection or restart the application."
+            );
+            return;
+          }
+          validationRetries.current += 1;
+          Log.info(
+            `File validation failed (attempt ${validationRetries.current}/3), re-downloading SAMP files`
+          );
           await fs.removeDir(sampPath, { recursive: true });
           await fs.createDir(sampPath, { recursive: true });
           await downloadSAMPFiles(sampPath);
           return;
         }
 
+        validationRetries.current = 0;
         Log.info("File validation successful");
         const ompVerificationComplete = await processOmpPluginVerification();
 
@@ -392,6 +384,8 @@ const LoadingScreen = ({ onEnd }: LoadingScreenProps) => {
       finishLoading,
     ]
   );
+
+  processFileChecksumsRef.current = processFileChecksums;
 
   const validateResources = useCallback(async () => {
     try {
