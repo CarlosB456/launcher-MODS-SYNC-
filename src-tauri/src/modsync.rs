@@ -270,6 +270,18 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
             let _ = copy_dir_recursive(&ml_data_src, &ml_data_dst);
         }
 
+        let samp_src = src_dir.join("SAMP");
+        let samp_dst = base_dir.join("SAMP");
+        if samp_src.exists() {
+            let _ = copy_dir_recursive(&samp_src, &samp_dst);
+        }
+
+        let models_txd_src = src_dir.join("models").join("txd");
+        let models_txd_dst = base_dir.join("models").join("txd");
+        if models_txd_src.exists() {
+            let _ = copy_dir_recursive(&models_txd_src, &models_txd_dst);
+        }
+
         let _ = fs::create_dir_all(base_dir.join("modloader").join("servers"));
         let _ = fs::create_dir_all(base_dir.join("cleo").join("servers"));
 

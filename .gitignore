@@ -26,5 +26,6 @@ bin/
 obj/
 *.zip
 omp-launcher-setup.exe
+omp-launcher.exe
 omp-client.dll
 client/hooks/build/
