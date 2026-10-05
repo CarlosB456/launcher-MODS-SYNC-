@@ -18,7 +18,7 @@ import { fetchServers, getIpAddress } from "../utils/helpers";
 import { Log } from "./logger";
 import { PING_TIMEOUT_VALUE } from "./query";
 import { sc } from "./sizeScaler";
-import { Server } from "./types";
+import { SAMPDLLVersions, Server } from "./types";
 
 const showOkModal = (title: string, description: string) => {
   const { showMessageBox, hideMessageBox } = useMessageBox.getState();
@@ -64,14 +64,23 @@ export const startGame = async (
   server: Server,
   nickname: string,
   gtasaPath: string,
-  password: string
+  password: string,
+  versionOverride?: SAMPDLLVersions
 ) => {
-  const { addToRecentlyJoined } = usePersistentServers.getState();
+  const { addToRecentlyJoined, getServerSettings } = usePersistentServers.getState();
   const { showMessageBox, hideMessageBox } = useMessageBox.getState();
   const { show: showSettings } = useSettingsModal.getState();
   const { sampVersion, customGameExe } = useSettings.getState();
   const { showPrompt, setServer } = useJoinServerPrompt.getState();
   const { setSelected } = useServers.getState();
+
+  const serverSettings = getServerSettings(server);
+  const effectiveSampVersion: SAMPDLLVersions =
+    versionOverride ||
+    serverSettings?.sampVersion ||
+    (server.rules?.allowed_clients?.includes("0.4.0") || server.rules?.artwork === "Yes"
+      ? "040R1_samp.dll"
+      : sampVersion);
 
   if (IN_GAME) {
     invoke("send_message_to_game", {
@@ -131,7 +140,7 @@ export const startGame = async (
     }
   });
 
-  if (sampVersion !== "custom") {
+  if (effectiveSampVersion !== "custom") {
     try {
       const checks = await checkResourceFilesAvailability();
       if (checks.includes(false)) {
@@ -168,7 +177,7 @@ export const startGame = async (
     }
   }
 
-  if (sampVersion === "custom" && !foundSampInGtaFolder) {
+  if (effectiveSampVersion === "custom" && !foundSampInGtaFolder) {
     showMessageBox({
       title: t("gta_path_modal_cant_find_samp_title"),
       description: `${t("gta_path_modal_cant_find_samp_description", {
@@ -210,24 +219,47 @@ export const startGame = async (
   }
 
   const idealSAMPDllPath = await path.join(gtasaPath, "samp.dll");
-  const targetVersion =
-    sampVersion === "040R1_samp.dll"
-      ? "03DL_samp.dll"
-      : sampVersion !== "custom"
-        ? sampVersion
-        : "03DL_samp.dll";
-  const file = validFileChecksums.get(targetVersion as any);
-  const ourSAMPDllPath =
-    sampVersion === "custom"
-      ? idealSAMPDllPath
-      : file
-        ? await getLocalPath(file.path, file.name)
-        : idealSAMPDllPath;
 
   try {
     await invoke("ensure_modsync", { gtasaPath });
   } catch (e) {
     Log.warn("ModSync framework optimization status:", e);
+  }
+
+  // Pre-sync server session (modloader profile, CLEO staging, CDN assets)
+  try {
+    const serverId = (server.hostname || `${server.ip}_${server.port}`)
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .toLowerCase();
+    const cdnUrl = server.rules?.cdn_url || "";
+    await invoke("sync_modsync_session", {
+      gtasaPath,
+      serverIp: await getIpAddress(server.ip),
+      serverPort: server.port,
+      playerName: nickname,
+      serverId,
+      cdnUrl: cdnUrl.length ? cdnUrl : null,
+    });
+  } catch (e) {
+    Log.warn("ModSync session synchronization status:", e);
+  }
+
+  let ourSAMPDllPath = idealSAMPDllPath;
+  if (effectiveSampVersion === "040R1_samp.dll") {
+    const custom040Path = await getLocalPath("samp", "0.4.0-R1", "samp.dll");
+    if (await fs.exists(custom040Path)) {
+      ourSAMPDllPath = custom040Path;
+    } else if (await fs.exists(idealSAMPDllPath)) {
+      ourSAMPDllPath = idealSAMPDllPath;
+    } else {
+      const dlFile = validFileChecksums.get("03DL_samp.dll");
+      ourSAMPDllPath = dlFile ? await getLocalPath(dlFile.path, dlFile.name) : idealSAMPDllPath;
+    }
+  } else if (effectiveSampVersion === "custom") {
+    ourSAMPDllPath = idealSAMPDllPath;
+  } else {
+    const file = validFileChecksums.get(effectiveSampVersion as any);
+    ourSAMPDllPath = file ? await getLocalPath(file.path, file.name) : idealSAMPDllPath;
   }
 
   invoke("inject", {

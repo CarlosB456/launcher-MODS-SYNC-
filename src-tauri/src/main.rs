@@ -192,6 +192,7 @@ async fn run_tauri_app() -> Result<()> {
             commands::extract_7z,
             commands::copy_files_to_gtasa,
             commands::ensure_modsync,
+            commands::sync_modsync_session,
             query::query_server,
             ipc::send_message_to_game
         ])

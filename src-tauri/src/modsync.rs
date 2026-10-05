@@ -80,6 +80,79 @@ pub fn patch_large_address_aware<P: AsRef<Path>>(exe_path: P) -> Result<bool, St
     Ok(true)
 }
 
+pub fn find_modsync_source_dir() -> Option<PathBuf> {
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let candidate = exe_dir.join("extra").join("modsync");
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    let candidates = [
+        PathBuf::from("extra/modsync"),
+        PathBuf::from("src-tauri/extra/modsync"),
+        PathBuf::from("../extra/modsync"),
+        PathBuf::from(r"C:\Users\Benja\Desktop\OPENMP MODS SYNC\build\launcher\mod_framework"),
+    ];
+
+    for c in &candidates {
+        if c.exists() {
+            return Some(c.clone());
+        }
+    }
+
+    None
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
+    }
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let target = dst.join(entry.file_name());
+
+        if file_type.is_dir() {
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else {
+            let should_copy = match (fs::metadata(entry.path()), fs::metadata(&target)) {
+                (Ok(s), Ok(d)) => s.len() != d.len(),
+                (Ok(_), Err(_)) => true,
+                _ => false,
+            };
+            if should_copy {
+                let _ = fs::copy(entry.path(), target);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn copy_file_if_needed(src: &Path, dst: &Path) {
+    if !src.exists() {
+        return;
+    }
+    let should_copy = match (fs::metadata(src), fs::metadata(dst)) {
+        (Ok(s), Ok(d)) => s.len() != d.len(),
+        (Ok(_), Err(_)) => true,
+        _ => false,
+    };
+    if should_copy {
+        if let Some(parent) = dst.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(e) = fs::copy(src, dst) {
+            warn!("Failed to copy {:?} to {:?}: {}", src, dst, e);
+        } else {
+            info!("Deployed {:?} -> {:?}", src, dst);
+        }
+    }
+}
+
 pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), String> {
     let base_dir = gtasa_path.as_ref();
     if !base_dir.exists() {
@@ -116,32 +189,139 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
         }
     }
 
-    // 3. Ensure modsync_hook.asi is deployed
-    let hook_dest = base_dir.join("modsync_hook.asi");
-    let possible_sources = [
-        PathBuf::from("extra/modsync/modsync_hook.asi"),
-        PathBuf::from("src-tauri/extra/modsync/modsync_hook.asi"),
-        PathBuf::from("../extra/modsync/modsync_hook.asi"),
-    ];
+    // 3. Deploy full ModSync framework if source directory is found
+    if let Some(src_dir) = find_modsync_source_dir() {
+        let core_files = [
+            "vorbisFile.dll",
+            "vorbisHooked.dll",
+            "vorbis.dll",
+            "ogg.dll",
+            "dinput8.dll",
+            "CLEO.asi",
+            "cleo_redux.asi",
+            ".cleo_config.ini",
+            "modloader.asi",
+            "modloader.ini",
+            "SilentPatchSA.asi",
+            "SilentPatchSA.ini",
+            "d3dx9_25.dll",
+            "sampcmd.exe",
+            "modsync_hook.asi",
+            "ModSyncLauncher.exe",
+        ];
 
-    for src in &possible_sources {
-        if src.exists() {
-            let should_copy = match (fs::metadata(src), fs::metadata(&hook_dest)) {
-                (Ok(s), Ok(d)) => s.len() != d.len(),
-                (Ok(_), Err(_)) => true,
-                _ => false,
-            };
+        for filename in &core_files {
+            let src = src_dir.join(filename);
+            let dst = base_dir.join(filename);
+            copy_file_if_needed(&src, &dst);
+        }
 
-            if should_copy {
-                if let Err(e) = fs::copy(src, &hook_dest) {
-                    warn!("Failed to copy modsync_hook.asi from {:?}: {}", src, e);
-                } else {
-                    info!("Synchronized modsync_hook.asi to {:?}", hook_dest);
+        // Directories: cleo and modloader/.data
+        let cleo_src = src_dir.join("cleo");
+        let cleo_dst = base_dir.join("cleo");
+        if cleo_src.exists() {
+            let _ = copy_dir_recursive(&cleo_src, &cleo_dst);
+        }
+
+        let ml_data_src = src_dir.join("modloader").join(".data");
+        let ml_data_dst = base_dir.join("modloader").join(".data");
+        if ml_data_src.exists() {
+            let _ = copy_dir_recursive(&ml_data_src, &ml_data_dst);
+        }
+
+        let _ = fs::create_dir_all(base_dir.join("modloader").join("servers"));
+        let _ = fs::create_dir_all(base_dir.join("cleo").join("servers"));
+
+        // Deploy 0.4.0 - R1 client DLL to %LOCALAPPDATA%\mp.open.launcher\samp\0.4.0-R1\samp.dll
+        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+            let target_040_dir = PathBuf::from(local_app_data)
+                .join("mp.open.launcher")
+                .join("samp")
+                .join("0.4.0-R1");
+            let target_040_dll = target_040_dir.join("samp.dll");
+
+            let possible_040_src = [
+                src_dir.join("040R1_samp.dll"),
+                src_dir.join("samp.dll"),
+            ];
+
+            for src in &possible_040_src {
+                if src.exists() {
+                    let _ = fs::create_dir_all(&target_040_dir);
+                    copy_file_if_needed(src, &target_040_dll);
+                    break;
                 }
             }
-            break;
         }
     }
 
     Ok(())
+}
+
+pub fn sync_modsync_session<P: AsRef<Path>>(
+    gtasa_path: P,
+    server_ip: &str,
+    server_port: i32,
+    player_name: &str,
+    server_id: &str,
+    cdn_url: Option<&str>,
+) -> Result<(), String> {
+    let base_dir = gtasa_path.as_ref();
+    let local_launcher = base_dir.join("ModSyncLauncher.exe");
+
+    let launcher_exe = if local_launcher.exists() {
+        local_launcher
+    } else if let Some(src_dir) = find_modsync_source_dir() {
+        src_dir.join("ModSyncLauncher.exe")
+    } else {
+        return Err("ModSyncLauncher.exe not found".to_string());
+    };
+
+    if !launcher_exe.exists() {
+        return Err(format!("ModSyncLauncher executable not found at {:?}", launcher_exe));
+    }
+
+    let mut cmd = std::process::Command::new(&launcher_exe);
+    cmd.arg("--gta-path")
+        .arg(base_dir)
+        .arg("--server-id")
+        .arg(server_id)
+        .arg("--host")
+        .arg(server_ip)
+        .arg("--port")
+        .arg(server_port.to_string())
+        .arg("--player-name")
+        .arg(player_name)
+        .arg("--sync-only");
+
+    if let Some(cdn) = cdn_url {
+        if !cdn.is_empty() {
+            cmd.arg("--cdn-url").arg(cdn);
+        }
+    }
+
+    cmd.current_dir(base_dir);
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    match cmd.output() {
+        Ok(output) => {
+            if output.status.success() {
+                info!("ModSync pre-sync completed successfully for {}", server_id);
+                Ok(())
+            } else {
+                let err = String::from_utf8_lossy(&output.stderr);
+                warn!("ModSync pre-sync exited with warning: {}", err);
+                Ok(())
+            }
+        }
+        Err(e) => {
+            warn!("Failed to execute ModSync pre-sync: {}", e);
+            Ok(())
+        }
+    }
 }

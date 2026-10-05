@@ -162,3 +162,22 @@ pub fn log_error(msg: &str) -> () {
 pub fn ensure_modsync(gtasa_path: &str) -> std::result::Result<(), String> {
     crate::modsync::ensure_modsync_framework(gtasa_path)
 }
+
+#[tauri::command]
+pub fn sync_modsync_session(
+    gtasa_path: String,
+    server_ip: String,
+    server_port: i32,
+    player_name: String,
+    server_id: String,
+    cdn_url: Option<String>,
+) -> std::result::Result<(), String> {
+    crate::modsync::sync_modsync_session(
+        &gtasa_path,
+        &server_ip,
+        server_port,
+        &player_name,
+        &server_id,
+        cdn_url.as_deref(),
+    )
+}

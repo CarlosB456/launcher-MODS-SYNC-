@@ -244,7 +244,8 @@ const JoinServerPrompt = () => {
         server,
         perServerNickname.length ? perServerNickname : nickName,
         gtasaPath,
-        server.hasPassword ? password : ""
+        server.hasPassword ? password : "",
+        perServerVersion
       );
       showPrompt(false);
     }
@@ -252,6 +253,7 @@ const JoinServerPrompt = () => {
     server,
     password,
     perServerNickname,
+    perServerVersion,
     nickName,
     gtasaPath,
     updateServer,
