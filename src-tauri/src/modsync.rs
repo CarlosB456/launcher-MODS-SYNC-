@@ -285,13 +285,33 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
             }
         }
 
-        // Patch modloader.asi at 0x9D00 to suppress ControllerBlockManager error box
+        // Restore modloader.asi at 0x9D00 if previously patched to 0xC3
         let ml_asi = base_dir.join("modloader.asi");
         if ml_asi.exists() {
             if let Ok(mut bytes) = fs::read(&ml_asi) {
-                if bytes.len() > 0x9D05 && bytes[0x9D00] == 0x6A && bytes[0x9D01] == 0x10 {
-                    bytes[0x9D00] = 0xC3;
+                if bytes.len() > 0x9D05 && bytes[0x9D00] == 0xC3 && bytes[0x9D01] == 0x10 {
+                    bytes[0x9D00] = 0x6A;
                     let _ = fs::write(&ml_asi, &bytes);
+                }
+            }
+        }
+
+        // Ensure CheckForDuplicateProcess bypass is applied to gta_sa.exe
+        if exe_path.exists() {
+            if let Ok(mut bytes) = fs::read(&exe_path) {
+                let mut modified = false;
+                let patch = [0x31, 0xC0, 0xC3, 0x90, 0x90];
+                if bytes.len() > 0x00345CE5 && bytes[0x00345CE0] == 0xA1 {
+                    bytes[0x00345CE0..0x00345CE0 + 5].copy_from_slice(&patch);
+                    modified = true;
+                }
+                if bytes.len() > 0x003468E5 && (bytes[0x003468E0] == 0x35 || bytes[0x003468E0] == 0xA1) {
+                    bytes[0x003468E0..0x003468E0 + 5].copy_from_slice(&patch);
+                    modified = true;
+                }
+                if modified {
+                    let _ = fs::write(&exe_path, &bytes);
+                    info!("Applied CheckForDuplicateProcess bypass to {:?}", exe_path);
                 }
             }
         }

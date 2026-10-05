@@ -225,6 +225,20 @@ public class Program
     {
         try
         {
+            // Terminate any lingering zombie gta_sa processes before launching
+            try
+            {
+                foreach (var proc in Process.GetProcessesByName("gta_sa"))
+                {
+                    try { proc.Kill(); proc.WaitForExit(1000); } catch { }
+                }
+                foreach (var proc in Process.GetProcessesByName("sampcmd"))
+                {
+                    try { proc.Kill(); proc.WaitForExit(1000); } catch { }
+                }
+            }
+            catch { }
+
             var gtaExe = Path.Combine(config.GtaPath, "gta_sa.exe");
             var sampExe = Path.Combine(config.GtaPath, "samp.exe");
             var sampCmd = Path.Combine(config.GtaPath, "sampcmd.exe");

@@ -44,6 +44,23 @@ pub async fn run_samp(
 
     let exe_path = PathBuf::from(executable_dir).join(&target_game_exe);
 
+    // Terminate any lingering zombie gta_sa or sampcmd processes before launching
+    #[cfg(target_os = "windows")]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/F", "/IM", "gta_sa.exe"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        let _ = Command::new("taskkill")
+            .args(["/F", "/IM", "sampcmd.exe"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
     // Automatically optimize GTA SA for ModSync: 2048 MB memory budget, door animations matrix pool, and LAA flag
     let _ = crate::modsync::ensure_modsync_framework(executable_dir);
 

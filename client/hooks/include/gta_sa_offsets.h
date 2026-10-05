@@ -35,6 +35,10 @@ namespace GtaSaOffsets {
     constexpr uintptr_t ADDR_HANDLING_DATA_MGR = 0x00C2B9C8;
     constexpr uintptr_t FUNC_GET_HANDLING_DATA = 0x006F1100;
 
+    // CheckForDuplicateProcess bypass addresses
+    constexpr uintptr_t ADDR_CHECK_FOR_DUPLICATE_PROCESS_10US = 0x00745CE0; // GTA SA 1.0 US
+    constexpr uintptr_t ADDR_CHECK_FOR_DUPLICATE_PROCESS      = 0x007468E0; // GTA SA 1.01 US / compact
+
     // Custom ModSync network packet identification
     constexpr uint8_t PACKET_MODSYNC_BASE         = 240;
     constexpr uint8_t PACKET_MODSYNC_VEHICLE_ADD  = 241;

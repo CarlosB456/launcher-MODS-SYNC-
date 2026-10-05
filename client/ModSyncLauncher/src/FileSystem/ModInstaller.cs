@@ -82,6 +82,73 @@ public class ModInstaller
             {
                 try { File.Delete(duplicateInScripts); } catch { }
             }
+
+            // Remove duplicate Ultimate ASI Loader (dinput8.dll) if present alongside vorbisFile.dll.
+            var duplicateDinput8 = Path.Combine(_gtaPath, "dinput8.dll");
+            if (File.Exists(duplicateDinput8))
+            {
+                try { File.Delete(duplicateDinput8); } catch { }
+            }
+
+            // Ensure modloader/.data/config.ini has EnableMenu = false to prevent Fatal error on ControllerBlockManager
+            var configIni = Path.Combine(modloaderDir, ".data", "config.ini");
+            if (File.Exists(configIni))
+            {
+                try
+                {
+                    var text = File.ReadAllText(configIni);
+                    if (text.Contains("EnableMenu = true") || text.Contains("EnableMenu        = true"))
+                    {
+                        text = text.Replace("EnableMenu        = true", "EnableMenu        = false")
+                                   .Replace("EnableMenu = true", "EnableMenu = false");
+                        File.WriteAllText(configIni, text);
+                    }
+                }
+                catch { }
+            }
+
+            // Restore original instruction in modloader.asi at 0x9D00 if previously patched to 0xC3
+            var mlAsi = Path.Combine(_gtaPath, "modloader.asi");
+            if (File.Exists(mlAsi))
+            {
+                try
+                {
+                    var bytes = File.ReadAllBytes(mlAsi);
+                    if (bytes.Length > 0x9D05 && bytes[0x9D00] == 0xC3 && bytes[0x9D01] == 0x10)
+                    {
+                        bytes[0x9D00] = 0x6A;
+                        File.WriteAllBytes(mlAsi, bytes);
+                    }
+                }
+                catch { }
+            }
+
+            // Ensure CheckForDuplicateProcess bypass is applied to gta_sa.exe binary
+            var gtaExe = Path.Combine(_gtaPath, "gta_sa.exe");
+            if (File.Exists(gtaExe))
+            {
+                try
+                {
+                    var bytes = File.ReadAllBytes(gtaExe);
+                    bool modified = false;
+                    byte[] patch = [0x31, 0xC0, 0xC3, 0x90, 0x90];
+                    if (bytes.Length > 0x00345CE5 && bytes[0x00345CE0] == 0xA1)
+                    {
+                        Buffer.BlockCopy(patch, 0, bytes, 0x00345CE0, patch.Length);
+                        modified = true;
+                    }
+                    if (bytes.Length > 0x003468E5 && (bytes[0x003468E0] == 0x35 || bytes[0x003468E0] == 0xA1))
+                    {
+                        Buffer.BlockCopy(patch, 0, bytes, 0x003468E0, patch.Length);
+                        modified = true;
+                    }
+                    if (modified)
+                    {
+                        File.WriteAllBytes(gtaExe, bytes);
+                    }
+                }
+                catch { }
+            }
         }
         catch
         {
