@@ -35,12 +35,11 @@ void ApplyStreamingAndPoolFixes() {
         MemoryHook::Patch<uint32_t>(GtaSaOffsets::ADDR_STREAMING_MEMORY_USED, 0);
     }
 
-    // 6. CRITICAL FIX: Bypass CheckForDuplicateProcess (0x007468E0 and 0x00745CE0)
-    // Prevents crash 0x00746929 / 0x00745D29 when a lingering zombie gta_sa process exists.
+    // 6. CRITICAL FIX: Bypass CheckForDuplicateProcess (0x007468E0)
+    // Prevents crash 0x00746929 when a lingering zombie gta_sa process exists.
     // Overwrite start of CheckForDuplicateProcess with: xor eax, eax; ret; nop; nop (31 C0 C3 90 90)
     const uint8_t bypassDupCheck[] = { 0x31, 0xC0, 0xC3, 0x90, 0x90 };
     MemoryHook::PatchBytes(GtaSaOffsets::ADDR_CHECK_FOR_DUPLICATE_PROCESS, bypassDupCheck, sizeof(bypassDupCheck));
-    MemoryHook::PatchBytes(GtaSaOffsets::ADDR_CHECK_FOR_DUPLICATE_PROCESS_10US, bypassDupCheck, sizeof(bypassDupCheck));
 }
 
 DWORD WINAPI InitializationThread(LPVOID) {

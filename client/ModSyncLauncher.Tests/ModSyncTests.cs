@@ -444,4 +444,45 @@ public class ModSyncTests : IDisposable
             Assert.DoesNotContain("Memory.WriteU32(0x8E4CB4, 2047", content);
         }
     }
+
+    [Fact]
+    public void Test_GtaSaExe_CheckForDuplicateProcess_And_Graphics_Bytecode()
+    {
+        var gameExePath = @"c:\Users\Benja\Desktop\OPENMP MODS SYNC\GTA San Andreas Instalador victor17798\gta_sa.exe";
+        if (File.Exists(gameExePath))
+        {
+            var bytes = File.ReadAllBytes(gameExePath);
+            Assert.True(bytes.Length > 0x003468E5);
+
+            // 0x00345CE0 (VA 0x007468E0): CheckForDuplicateProcess must be patched with 31 C0 C3 90 90
+            byte[] expectedDupPatch = [0x31, 0xC0, 0xC3, 0x90, 0x90];
+            Assert.Equal(expectedDupPatch, bytes.AsSpan(0x00345CE0, 5).ToArray());
+
+            // 0x003468E0 (VA 0x007474E0): InitialiseGraphicsLib must retain original opcode 35 68 CF C8 00
+            byte[] expectedGfxBytes = [0x35, 0x68, 0xCF, 0xC8, 0x00];
+            Assert.Equal(expectedGfxBytes, bytes.AsSpan(0x003468E0, 5).ToArray());
+        }
+    }
+
+    [Fact]
+    public void Test_ModLoader_Bytecode_And_Config()
+    {
+        var mlPath = @"c:\Users\Benja\Desktop\OPENMP MODS SYNC\GTA San Andreas Instalador victor17798\modloader.asi";
+        if (File.Exists(mlPath))
+        {
+            var bytes = File.ReadAllBytes(mlPath);
+            Assert.True(bytes.Length > 0x9D05);
+            // 0x9D00 must be original opcode 0x6A (push 0x10), not 0xC3 (ret)
+            Assert.Equal(0x6A, bytes[0x9D00]);
+        }
+
+        var configPath = @"c:\Users\Benja\Desktop\OPENMP MODS SYNC\GTA San Andreas Instalador victor17798\modloader\.data\config.ini";
+        if (File.Exists(configPath))
+        {
+            var text = File.ReadAllText(configPath);
+            Assert.Contains("EnableMenu", text);
+            Assert.DoesNotContain("EnableMenu = true", text);
+            Assert.DoesNotContain("EnableMenu        = true", text);
+        }
+    }
 }

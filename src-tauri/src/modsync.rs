@@ -296,7 +296,8 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
             }
         }
 
-        // Ensure CheckForDuplicateProcess bypass is applied to gta_sa.exe
+        // Ensure CheckForDuplicateProcess bypass is applied to gta_sa.exe (0x00345CE0 -> VA 0x007468E0)
+        // and repair 0x003468E0 (VA 0x007474E0) if previously corrupted
         if exe_path.exists() {
             if let Ok(mut bytes) = fs::read(&exe_path) {
                 let mut modified = false;
@@ -305,13 +306,14 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
                     bytes[0x00345CE0..0x00345CE0 + 5].copy_from_slice(&patch);
                     modified = true;
                 }
-                if bytes.len() > 0x003468E5 && (bytes[0x003468E0] == 0x35 || bytes[0x003468E0] == 0xA1) {
-                    bytes[0x003468E0..0x003468E0 + 5].copy_from_slice(&patch);
+                if bytes.len() > 0x003468E5 && bytes[0x003468E0] == 0x31 && bytes[0x003468E1] == 0xC0 && bytes[0x003468E2] == 0xC3 {
+                    let orig_gfx = [0x35, 0x68, 0xCF, 0xC8, 0x00];
+                    bytes[0x003468E0..0x003468E0 + 5].copy_from_slice(&orig_gfx);
                     modified = true;
                 }
                 if modified {
                     let _ = fs::write(&exe_path, &bytes);
-                    info!("Applied CheckForDuplicateProcess bypass to {:?}", exe_path);
+                    info!("Verified and repaired gta_sa.exe binary at {:?}", exe_path);
                 }
             }
         }
@@ -376,6 +378,9 @@ pub fn sync_modsync_session<P: AsRef<Path>>(
         _ => format!("http://{}:8080", host),
     };
 
+    // Silently terminate any lingering zombie game processes prior to synchronization
+    terminate_lingering_game_processes();
+
     let mut cmd = std::process::Command::new(&launcher_exe);
     cmd.arg("--gta-path")
         .arg(base_dir)
@@ -416,5 +421,28 @@ pub fn sync_modsync_session<P: AsRef<Path>>(
             warn!("Failed to execute ModSync pre-sync: {}", e);
             Ok(())
         }
+    }
+}
+
+/// Terminate any lingering zombie gta_sa or sampcmd processes silently without flashing console windows
+pub fn terminate_lingering_game_processes() {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "gta_sa.exe"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "sampcmd.exe"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
     }
 }

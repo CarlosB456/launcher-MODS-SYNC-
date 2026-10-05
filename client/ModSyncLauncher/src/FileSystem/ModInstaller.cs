@@ -123,7 +123,8 @@ public class ModInstaller
                 catch { }
             }
 
-            // Ensure CheckForDuplicateProcess bypass is applied to gta_sa.exe binary
+            // Ensure CheckForDuplicateProcess bypass is applied to gta_sa.exe binary (0x00345CE0 -> VA 0x007468E0)
+            // and repair 0x003468E0 (VA 0x007474E0) if previously corrupted.
             var gtaExe = Path.Combine(_gtaPath, "gta_sa.exe");
             if (File.Exists(gtaExe))
             {
@@ -137,9 +138,10 @@ public class ModInstaller
                         Buffer.BlockCopy(patch, 0, bytes, 0x00345CE0, patch.Length);
                         modified = true;
                     }
-                    if (bytes.Length > 0x003468E5 && (bytes[0x003468E0] == 0x35 || bytes[0x003468E0] == 0xA1))
+                    if (bytes.Length > 0x003468E5 && bytes[0x003468E0] == 0x31 && bytes[0x003468E1] == 0xC0 && bytes[0x003468E2] == 0xC3)
                     {
-                        Buffer.BlockCopy(patch, 0, bytes, 0x003468E0, patch.Length);
+                        byte[] origGfx = [0x35, 0x68, 0xCF, 0xC8, 0x00];
+                        Buffer.BlockCopy(origGfx, 0, bytes, 0x003468E0, origGfx.Length);
                         modified = true;
                     }
                     if (modified)
