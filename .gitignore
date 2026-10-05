@@ -24,5 +24,6 @@ dist-ssr
 *.sw?
 bin/
 obj/
+*.zip
 omp-launcher-setup.exe
 omp-client.dll

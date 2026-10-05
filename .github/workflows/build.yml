@@ -1,12 +1,17 @@
-name: "Build"
+name: "Build & Release"
 on:
   workflow_dispatch:
   push:
     branches:
       - "master"
+    tags:
+      - "v*"
   pull_request:
     branches:
       - "master"
+
+permissions:
+  contents: write
 
 jobs:
   build-omp-launcher:
@@ -30,7 +35,7 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: nightly-2024-01-01 # Specific nightly version that works with dll-syringe, remove when it gets fixed so we can use latest
+          toolchain: nightly-2024-01-01
 
       - name: Install frontend dependencies
         run: yarn install
@@ -40,15 +45,6 @@ jobs:
 
       - name: Build project
         run: yarn release
-
-      # - name: Generate artifact name
-      #   id: vars
-      #   shell: bash
-      #   run: |
-      #     artifact_name="open.mp-launcher-win-${GITHUB_RUN_ID}"
-      #     echo "artifact_name=${artifact_name}" >> $GITHUB_OUTPUT
-      #     setup_artifact_name="open.mp-launcher-win-setup-${GITHUB_RUN_ID}"
-      #     echo "setup_artifact_name=${setup_artifact_name}" >> $GITHUB_OUTPUT
 
       - name: Prepare unsigned launcher
         shell: pwsh
@@ -67,6 +63,9 @@ jobs:
           archive: false
 
       - name: Sign launcher
+        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
         uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -79,20 +78,18 @@ jobs:
           output-artifact-directory: signed-launcher
           skip-decompress: true
 
-      - name: Restore signed launcher for NSIS
+      - name: Restore launcher for NSIS
         shell: pwsh
         run: |
-          Copy-Item `
-            -LiteralPath "signed-launcher/unsigned-omp-launcher.exe" `
-            -Destination "src-tauri/target/i686-pc-windows-msvc/release/omp-launcher.exe" `
-            -Force
+          if (Test-Path "signed-launcher/unsigned-omp-launcher.exe") {
+            Copy-Item -LiteralPath "signed-launcher/unsigned-omp-launcher.exe" -Destination "src-tauri/target/i686-pc-windows-msvc/release/omp-launcher.exe" -Force
+            Copy-Item -LiteralPath "signed-launcher/unsigned-omp-launcher.exe" -Destination "omp-launcher.exe" -Force
+          } else {
+            Copy-Item -LiteralPath "unsigned-omp-launcher.exe" -Destination "src-tauri/target/i686-pc-windows-msvc/release/omp-launcher.exe" -Force
+            Copy-Item -LiteralPath "unsigned-omp-launcher.exe" -Destination "omp-launcher.exe" -Force
+          }
 
-          Copy-Item `
-            -LiteralPath "signed-launcher/unsigned-omp-launcher.exe" `
-            -Destination "omp-launcher.exe" `
-            -Force
-
-      - name: Upload signed launcher
+      - name: Upload launcher
         uses: actions/upload-artifact@v7
         with:
           path: omp-launcher.exe
@@ -119,6 +116,9 @@ jobs:
           archive: false
 
       - name: Sign installer
+        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
         uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -131,17 +131,37 @@ jobs:
           output-artifact-directory: signed-installer
           skip-decompress: true
 
-      - name: Rename signed installer
+      - name: Finalize installer
         shell: pwsh
         run: |
-          Copy-Item `
-            -LiteralPath "signed-installer/unsigned-omp-launcher-setup.exe" `
-            -Destination "omp-launcher-setup.exe" `
-            -Force
+          if (Test-Path "signed-installer/unsigned-omp-launcher-setup.exe") {
+            Copy-Item -LiteralPath "signed-installer/unsigned-omp-launcher-setup.exe" -Destination "omp-launcher-setup.exe" -Force
+          } else {
+            Copy-Item -LiteralPath "unsigned-omp-launcher-setup.exe" -Destination "omp-launcher-setup.exe" -Force
+          }
 
-      - name: Upload signed installer
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v7
         with:
           path: omp-launcher-setup.exe
           if-no-files-found: error
           archive: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build ModSync Client Engine
+        run: |
+          dotnet publish client/ModSyncLauncher/ModSyncLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o client-publish
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            omp-launcher-setup.exe
+            omp-launcher.exe
+            client-publish/ModSyncLauncher.exe
+          generate_release_notes: false
