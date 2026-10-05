@@ -15,62 +15,63 @@ pub fn patch_large_address_aware<P: AsRef<Path>>(exe_path: P) -> Result<bool, St
         return Err(format!("File does not exist: {:?}", path));
     }
 
-    let mut file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)
-        .map_err(|e| format!("Failed to open executable for LAA patching: {}", e))?;
+    // Check if already patched in read-only mode first to avoid unnecessary write handles
+    let characteristics = {
+        let mut file = fs::File::open(path)
+            .map_err(|e| format!("Failed to open executable for LAA check: {}", e))?;
 
-    // Verify DOS MZ header
-    let mut dos_header = [0u8; 64];
-    file.read_exact(&mut dos_header)
-        .map_err(|e| format!("Failed to read DOS header: {}", e))?;
+        let mut dos_header = [0u8; 64];
+        file.read_exact(&mut dos_header)
+            .map_err(|e| format!("Failed to read DOS header: {}", e))?;
 
-    if dos_header[0] != 0x4D || dos_header[1] != 0x5A {
-        return Err("Not a valid PE executable (missing MZ signature)".to_string());
-    }
+        if dos_header[0] != 0x4D || dos_header[1] != 0x5A {
+            return Err("Not a valid PE executable (missing MZ signature)".to_string());
+        }
 
-    // Read PE offset at 0x3C
-    let pe_offset = u32::from_le_bytes([
-        dos_header[0x3C],
-        dos_header[0x3D],
-        dos_header[0x3E],
-        dos_header[0x3F],
-    ]) as u64;
+        let pe_offset = u32::from_le_bytes([
+            dos_header[0x3C],
+            dos_header[0x3D],
+            dos_header[0x3E],
+            dos_header[0x3F],
+        ]) as u64;
 
-    file.seek(SeekFrom::Start(pe_offset))
-        .map_err(|e| format!("Failed to seek to PE header: {}", e))?;
+        file.seek(SeekFrom::Start(pe_offset))
+            .map_err(|e| format!("Failed to seek to PE header: {}", e))?;
 
-    // Verify PE signature ("PE\0\0")
-    let mut pe_sig = [0u8; 4];
-    file.read_exact(&mut pe_sig)
-        .map_err(|e| format!("Failed to read PE signature: {}", e))?;
+        let mut pe_sig = [0u8; 4];
+        file.read_exact(&mut pe_sig)
+            .map_err(|e| format!("Failed to read PE signature: {}", e))?;
 
-    if pe_sig != [0x50, 0x45, 0x00, 0x00] {
-        return Err("Not a valid PE header (missing PE signature)".to_string());
-    }
+        if pe_sig != [0x50, 0x45, 0x00, 0x00] {
+            return Err("Not a valid PE header (missing PE signature)".to_string());
+        }
 
-    // Characteristics offset is pe_offset + 4 (signature) + 18 (COFF header offset to characteristics) = pe_offset + 22
-    let characteristics_offset = pe_offset + 22;
-    file.seek(SeekFrom::Start(characteristics_offset))
-        .map_err(|e| format!("Failed to seek to PE characteristics: {}", e))?;
+        let characteristics_offset = pe_offset + 22;
+        file.seek(SeekFrom::Start(characteristics_offset))
+            .map_err(|e| format!("Failed to seek to PE characteristics: {}", e))?;
 
-    let mut char_bytes = [0u8; 2];
-    file.read_exact(&mut char_bytes)
-        .map_err(|e| format!("Failed to read characteristics: {}", e))?;
+        let mut char_bytes = [0u8; 2];
+        file.read_exact(&mut char_bytes)
+            .map_err(|e| format!("Failed to read characteristics: {}", e))?;
 
-    let characteristics = u16::from_le_bytes(char_bytes);
+        (u16::from_le_bytes(char_bytes), characteristics_offset)
+    };
 
-    if (characteristics & LAA_FLAG) == LAA_FLAG {
+    if (characteristics.0 & LAA_FLAG) == LAA_FLAG {
         info!("Executable is already Large Address Aware: {:?}", path);
         return Ok(false);
     }
 
-    let new_characteristics = characteristics | LAA_FLAG;
-    file.seek(SeekFrom::Start(characteristics_offset))
+    let mut write_file = OpenOptions::new()
+        .write(true)
+        .open(path)
+        .map_err(|e| format!("Failed to open executable for LAA writing: {}", e))?;
+
+    let new_characteristics = characteristics.0 | LAA_FLAG;
+    write_file.seek(SeekFrom::Start(characteristics.1))
         .map_err(|e| format!("Failed to seek to characteristics for writing: {}", e))?;
 
-    file.write_all(&new_characteristics.to_le_bytes())
+    write_file.write_all(&new_characteristics.to_le_bytes())
         .map_err(|e| format!("Failed to write updated characteristics: {}", e))?;
 
     info!(
@@ -438,25 +439,17 @@ pub fn sync_modsync_session<P: AsRef<Path>>(
     }
 }
 
-/// Terminate any lingering zombie gta_sa or sampcmd processes silently without flashing console windows
+/// Terminate any lingering zombie gta_sa or sampcmd processes cleanly using sysinfo
 pub fn terminate_lingering_game_processes() {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        let _ = std::process::Command::new("taskkill")
-            .args(["/F", "/IM", "gta_sa.exe"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-        let _ = std::process::Command::new("taskkill")
-            .args(["/F", "/IM", "sampcmd.exe"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
+    use sysinfo::{ProcessRefreshKind, RefreshKind, System};
+    let s = System::new_with_specifics(
+        RefreshKind::new().with_processes(ProcessRefreshKind::everything()),
+    );
+    for (_pid, process) in s.processes() {
+        let name = process.name().to_lowercase();
+        if name == "gta_sa.exe" || name == "sampcmd.exe" {
+            info!("Terminating lingering game process: {} (PID: {})", name, _pid);
+            process.kill();
+        }
     }
 }
