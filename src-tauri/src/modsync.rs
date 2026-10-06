@@ -285,7 +285,7 @@ pub fn ensure_modsync_framework<P: AsRef<Path>>(gtasa_path: P) -> Result<(), Str
             let _ = copy_dir_recursive(&models_txd_src, &models_txd_dst);
         }
 
-        let _ = fs::create_dir_all(base_dir.join("modloader").join("servers"));
+        let _ = fs::create_dir_all(base_dir.join("modloader"));
         let _ = fs::create_dir_all(base_dir.join("cleo").join("servers"));
 
         // Ensure modloader/.data/config.ini has EnableMenu = false to prevent ControllerBlockManager collision
@@ -423,12 +423,13 @@ pub fn sync_modsync_session<P: AsRef<Path>>(
 
     match cmd.output() {
         Ok(output) => {
+            let out = String::from_utf8_lossy(&output.stdout);
+            let err = String::from_utf8_lossy(&output.stderr);
             if output.status.success() {
-                info!("ModSync pre-sync completed successfully for {}", server_id);
+                info!("ModSync pre-sync completed successfully for {}: {}", server_id, out.trim());
                 Ok(())
             } else {
-                let err = String::from_utf8_lossy(&output.stderr);
-                warn!("ModSync pre-sync exited with warning: {}", err);
+                warn!("ModSync pre-sync exited with error code {:?}: stderr='{}', stdout='{}'", output.status.code(), err.trim(), out.trim());
                 Ok(())
             }
         }

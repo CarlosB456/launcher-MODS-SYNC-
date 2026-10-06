@@ -19,7 +19,10 @@ public class ManifestClient : IDisposable
         _httpClient = httpClient;
         _config = config;
 
-        _httpClient.BaseAddress = new Uri(config.ServerAddress);
+        if (!string.IsNullOrEmpty(config.ServerAddress) && Uri.TryCreate(config.ServerAddress, UriKind.Absolute, out var baseUri))
+        {
+            _httpClient.BaseAddress = baseUri;
+        }
         if (!string.IsNullOrEmpty(config.ApiKey))
         {
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.ApiKey);
@@ -30,16 +33,53 @@ public class ManifestClient : IDisposable
     {
         try
         {
-            var response = await _httpClient.GetAsync("/api/manifest", cancellationToken);
-            response.EnsureSuccessStatusCode();
+            if (_httpClient.BaseAddress == null)
+            {
+                return null;
+            }
 
-            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+            var endpoints = new[] { "/api/manifest", "/manifest.json", "/manifest" };
+            HttpResponseMessage? response = null;
+            string lastError = string.Empty;
+
+            foreach (var ep in endpoints)
+            {
+                try
+                {
+                    var res = await _httpClient.GetAsync(ep, linkedCts.Token);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        response = res;
+                        break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex.Message;
+                }
+            }
+
+            if (response == null)
+            {
+                if (!string.IsNullOrEmpty(lastError))
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"[NOTICE] Manifest status: {lastError}");
+                    Console.ResetColor();
+                }
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(linkedCts.Token);
             return JsonSerializer.Deserialize(json, ModManifestContext.Default.ModManifest);
         }
         catch (Exception ex)
         {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"Error fetching manifest: {ex.Message}");
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"[NOTICE] Manifest status: {ex.Message}");
             Console.ResetColor();
             return null;
         }

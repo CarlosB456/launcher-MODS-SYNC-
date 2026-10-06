@@ -26,7 +26,7 @@ public class ModInstaller
         set => _serverId = SanitizeServerId(value);
     }
 
-    public string ServerModloaderFolderName => Path.Combine("servers", ServerId);
+    public string ServerModloaderFolderName => ServerId;
 
     public ModInstaller(string gtaPath, string serverId = "openmp_server")
     {
@@ -55,12 +55,41 @@ public class ModInstaller
         try
         {
             var modloaderDir = Path.Combine(_gtaPath, "modloader");
-            var modloaderServersDir = Path.Combine(modloaderDir, "servers");
+            var serverModDir = Path.Combine(modloaderDir, ServerModloaderFolderName);
             var cleoServersDir = Path.Combine(_gtaPath, "cleo", "servers");
 
             if (!Directory.Exists(modloaderDir)) Directory.CreateDirectory(modloaderDir);
-            if (!Directory.Exists(modloaderServersDir)) Directory.CreateDirectory(modloaderServersDir);
+            if (!Directory.Exists(serverModDir)) Directory.CreateDirectory(serverModDir);
             if (!Directory.Exists(cleoServersDir)) Directory.CreateDirectory(cleoServersDir);
+
+            // Clean obsolete legacy nested servers directory if present
+            var legacyServersDir = Path.Combine(modloaderDir, "servers");
+            if (Directory.Exists(legacyServersDir))
+            {
+                try
+                {
+                    // If any mods were staged inside legacy servers/<ServerId>, migrate them up to modloader/<ServerId>
+                    var legacySpecificServer = Path.Combine(legacyServersDir, ServerId);
+                    if (Directory.Exists(legacySpecificServer))
+                    {
+                        foreach (var dir in Directory.GetDirectories(legacySpecificServer, "*", SearchOption.AllDirectories))
+                        {
+                            var rel = Path.GetRelativePath(legacySpecificServer, dir);
+                            Directory.CreateDirectory(Path.Combine(serverModDir, rel));
+                        }
+                        foreach (var file in Directory.GetFiles(legacySpecificServer, "*.*", SearchOption.AllDirectories))
+                        {
+                            var rel = Path.GetRelativePath(legacySpecificServer, file);
+                            var dest = Path.Combine(serverModDir, rel);
+                            var destDir = Path.GetDirectoryName(dest);
+                            if (!string.IsNullOrEmpty(destDir)) Directory.CreateDirectory(destDir);
+                            File.Copy(file, dest, true);
+                        }
+                    }
+                    Directory.Delete(legacyServersDir, true);
+                }
+                catch { }
+            }
 
             // Clean obsolete legacy sync directories
             var legacyOpenmpSync = Path.Combine(modloaderDir, "openmp_sync");
@@ -84,6 +113,9 @@ public class ModInstaller
             }
 
             // Remove duplicate Ultimate ASI Loader (dinput8.dll) if present alongside vorbisFile.dll.
+            // GTA San Andreas uses vorbisFile.dll + vorbisHooked.dll as its primary ASI loader.
+            // Having dinput8.dll in the game root causes duplicate ASI loaders to execute concurrently,
+            // corrupting Plugin-SDK shared memory and triggering crash 0x6C079B43 in modloader.asi.
             var duplicateDinput8 = Path.Combine(_gtaPath, "dinput8.dll");
             if (File.Exists(duplicateDinput8))
             {
@@ -123,8 +155,7 @@ public class ModInstaller
                 catch { }
             }
 
-            // Ensure CheckForDuplicateProcess bypass is applied to gta_sa.exe binary (0x00345CE0 -> VA 0x007468E0)
-            // and repair 0x003468E0 (VA 0x007474E0) if previously corrupted.
+            // Ensure CheckForDuplicateProcess bypass is applied to gta_sa.exe binary
             var gtaExe = Path.Combine(_gtaPath, "gta_sa.exe");
             if (File.Exists(gtaExe))
             {
@@ -138,10 +169,9 @@ public class ModInstaller
                         Buffer.BlockCopy(patch, 0, bytes, 0x00345CE0, patch.Length);
                         modified = true;
                     }
-                    if (bytes.Length > 0x003468E5 && bytes[0x003468E0] == 0x31 && bytes[0x003468E1] == 0xC0 && bytes[0x003468E2] == 0xC3)
+                    if (bytes.Length > 0x003468E5 && (bytes[0x003468E0] == 0x35 || bytes[0x003468E0] == 0xA1))
                     {
-                        byte[] origGfx = [0x35, 0x68, 0xCF, 0xC8, 0x00];
-                        Buffer.BlockCopy(origGfx, 0, bytes, 0x003468E0, origGfx.Length);
+                        Buffer.BlockCopy(patch, 0, bytes, 0x003468E0, patch.Length);
                         modified = true;
                     }
                     if (modified)
@@ -151,6 +181,74 @@ public class ModInstaller
                 }
                 catch { }
             }
+
+            // Ensure modsync_hook.asi and loadscreen are deployed
+            try
+            {
+                var appDir = AppDomain.CurrentDomain.BaseDirectory;
+                var candidateHooks = new[]
+                {
+                    Path.Combine(appDir, "modsync_hook.asi"),
+                    Path.Combine(appDir, "extra", "modsync", "modsync_hook.asi"),
+                    Path.Combine(appDir, "mod_framework", "modsync_hook.asi"),
+                    @"C:\Users\Benja\Desktop\OPENMP MODS SYNC\client\hooks\build\Release\modsync_hook.asi"
+                };
+                var targetHook = Path.Combine(_gtaPath, "modsync_hook.asi");
+                foreach (var hook in candidateHooks)
+                {
+                    if (File.Exists(hook))
+                    {
+                        if (!File.Exists(targetHook) || new FileInfo(targetHook).Length != new FileInfo(hook).Length)
+                        {
+                            File.Copy(hook, targetHook, true);
+                        }
+                        break;
+                    }
+                }
+
+                var candidateLoadscreens = new[]
+                {
+                    Path.Combine(appDir, "loadscreen.png"),
+                    Path.Combine(appDir, "extra", "modsync", "loadscreen.png"),
+                    Path.Combine(appDir, "loadscreen.jpg"),
+                    @"C:\Users\Benja\Downloads\LOADSCREEN.PNG"
+                };
+                var targetLoadscreen = Path.Combine(_gtaPath, "loadscreen.png");
+                foreach (var ls in candidateLoadscreens)
+                {
+                    if (File.Exists(ls))
+                    {
+                        if (!File.Exists(targetLoadscreen) || new FileInfo(targetLoadscreen).Length != new FileInfo(ls).Length)
+                        {
+                            File.Copy(ls, targetLoadscreen, true);
+                        }
+                        break;
+                    }
+                }
+
+                var candidateLoadscs = new[]
+                {
+                    Path.Combine(appDir, "models", "txd", "LOADSCS.txd"),
+                    Path.Combine(appDir, "extra", "modsync", "models", "txd", "LOADSCS.txd"),
+                    Path.Combine(appDir, "mod_framework", "models", "txd", "LOADSCS.txd"),
+                    @"C:\Users\Benja\Desktop\OPENMP MODS SYNC\build\launcher\models\txd\LOADSCS.txd"
+                };
+                var targetModelsTxd = Path.Combine(_gtaPath, "models", "txd");
+                Directory.CreateDirectory(targetModelsTxd);
+                var targetLoadscs = Path.Combine(targetModelsTxd, "LOADSCS.txd");
+                foreach (var lscs in candidateLoadscs)
+                {
+                    if (File.Exists(lscs))
+                    {
+                        if (!File.Exists(targetLoadscs) || new FileInfo(targetLoadscs).Length != new FileInfo(lscs).Length)
+                        {
+                            File.Copy(lscs, targetLoadscs, true);
+                        }
+                        break;
+                    }
+                }
+            }
+            catch { }
         }
         catch
         {
@@ -299,17 +397,21 @@ public class ModInstaller
         {
             var modloaderDir = Path.Combine(_gtaPath, "modloader");
             var modloaderIniPath = Path.Combine(modloaderDir, "modloader.ini");
-            var activeServerFolder = $"servers/{ServerId}";
+            var activeServerFolder = ServerId;
 
-            // Enumerate all servers/* folders inside modloader
-            var serversBase = Path.Combine(modloaderDir, "servers");
-            var existingServerFolders = Directory.Exists(serversBase)
-                ? Directory.GetDirectories(serversBase)
+            // Enumerate all server mod directories inside modloader
+            var existingServerFolders = Directory.Exists(modloaderDir)
+                ? Directory.GetDirectories(modloaderDir)
                     .Select(Path.GetFileName)
-                    .Where(s => !string.IsNullOrEmpty(s))
-                    .Select(s => $"servers/{s}")
+                    .Where(s => !string.IsNullOrEmpty(s) && !s.StartsWith(".") && !s.Equals("servers", StringComparison.OrdinalIgnoreCase))
+                    .Select(s => s!)
                     .ToList()
                 : new List<string>();
+
+            if (!existingServerFolders.Contains(activeServerFolder, StringComparer.OrdinalIgnoreCase))
+            {
+                existingServerFolders.Add(activeServerFolder);
+            }
 
             List<string> lines;
             if (File.Exists(modloaderIniPath))
@@ -391,12 +493,12 @@ public class ModInstaller
                     inIgnoreSection = false;
                 }
 
-                if (inPrioritySection && (line.StartsWith("openmp_", StringComparison.OrdinalIgnoreCase) || line.StartsWith("servers/", StringComparison.OrdinalIgnoreCase)))
+                if (inPrioritySection && (line.StartsWith("openmp_", StringComparison.OrdinalIgnoreCase) || line.StartsWith("servers/", StringComparison.OrdinalIgnoreCase) || existingServerFolders.Any(f => line.StartsWith(f + "=", StringComparison.OrdinalIgnoreCase))))
                 {
                     continue; // Skip old server priority entries
                 }
 
-                if (inIgnoreSection && (line.StartsWith("openmp_", StringComparison.OrdinalIgnoreCase) || line.StartsWith("servers/", StringComparison.OrdinalIgnoreCase) || line == "_ignore"))
+                if (inIgnoreSection && (line.StartsWith("openmp_", StringComparison.OrdinalIgnoreCase) || line.StartsWith("servers/", StringComparison.OrdinalIgnoreCase) || existingServerFolders.Contains(line) || line == "_ignore"))
                 {
                     continue; // Skip old ignore entries
                 }
@@ -418,8 +520,17 @@ public class ModInstaller
     {
         try
         {
-            var modloaderIniPath = Path.Combine(_gtaPath, "modloader", "modloader.ini");
+            var modloaderDir = Path.Combine(_gtaPath, "modloader");
+            var modloaderIniPath = Path.Combine(modloaderDir, "modloader.ini");
             if (!File.Exists(modloaderIniPath)) return;
+
+            var existingServerFolders = Directory.Exists(modloaderDir)
+                ? Directory.GetDirectories(modloaderDir)
+                    .Select(Path.GetFileName)
+                    .Where(s => !string.IsNullOrEmpty(s) && !s.StartsWith(".") && !s.Equals("servers", StringComparison.OrdinalIgnoreCase))
+                    .Select(s => s!)
+                    .ToList()
+                : new List<string>();
 
             var lines = File.ReadAllLines(modloaderIniPath).ToList();
             var newLines = new List<string>();
@@ -453,12 +564,12 @@ public class ModInstaller
                     inIgnoreSection = false;
                 }
 
-                if (inPrioritySection && (trimmed.StartsWith("openmp_", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("servers/", StringComparison.OrdinalIgnoreCase)))
+                if (inPrioritySection && (trimmed.StartsWith("openmp_", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("servers/", StringComparison.OrdinalIgnoreCase) || existingServerFolders.Any(f => trimmed.StartsWith(f + "=", StringComparison.OrdinalIgnoreCase))))
                 {
                     continue;
                 }
 
-                if (inIgnoreSection && (trimmed.StartsWith("openmp_", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("servers/", StringComparison.OrdinalIgnoreCase)))
+                if (inIgnoreSection && (trimmed.StartsWith("openmp_", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("servers/", StringComparison.OrdinalIgnoreCase) || existingServerFolders.Contains(trimmed)))
                 {
                     continue;
                 }
@@ -532,7 +643,38 @@ public class ModInstaller
                     foreach (var scriptFile in Directory.GetFiles(scriptsDir, "*.*", SearchOption.AllDirectories))
                     {
                         var fileName = Path.GetFileName(scriptFile);
-                        var stagedName = $"openmp_{ServerId}_{fileName}";
+                        string stagedName;
+                        if (scriptFile.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var hasMem = fileName.Contains("[mem]", StringComparison.OrdinalIgnoreCase);
+                            if (!hasMem)
+                            {
+                                try
+                                {
+                                    var content = File.ReadAllText(scriptFile);
+                                    if (content.Contains("Memory.Write", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        hasMem = true;
+                                    }
+                                }
+                                catch { }
+                            }
+
+                            if (hasMem)
+                            {
+                                var rawName = Path.GetFileNameWithoutExtension(scriptFile).Replace("[mem]", "", StringComparison.OrdinalIgnoreCase);
+                                stagedName = $"openmp_{ServerId}_{rawName}[mem].js";
+                            }
+                            else
+                            {
+                                stagedName = $"openmp_{ServerId}_{fileName}";
+                            }
+                        }
+                        else
+                        {
+                            stagedName = $"openmp_{ServerId}_{fileName}";
+                        }
+
                         var targetPath = Path.Combine(cleoRoot, stagedName);
                         SafeStageFile(scriptFile, targetPath, Path.Combine("cleo", stagedName));
                     }
